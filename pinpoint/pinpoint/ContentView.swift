@@ -7,7 +7,7 @@
 
 import SwiftUI
 import MapKit
-@_exported import EventViewModel
+
 
 struct ContentView: View {
     @StateObject private var viewModel = EventViewModel()
@@ -54,6 +54,7 @@ struct ContentView: View {
                         }
                     }
             )
+            .blur(radius: showingEventSheet ? 10 : 0)
             
             VStack {
                 Spacer()
@@ -63,21 +64,23 @@ struct ContentView: View {
                     .cornerRadius(10)
                     .padding(.bottom)
             }
-        }
-        .sheet(isPresented: $showingEventSheet) {
-            NavigationView {
-                Form {
-                    Section(header: Text("Event Details")) {
-                        TextField("Title", text: $eventTitle)
-                        TextField("Description", text: $eventDescription)
-                    }
-                }
-                .navigationTitle("New Event")
-                .navigationBarItems(
-                    leading: Button("Cancel") {
+            .allowsHitTesting(!showingEventSheet)
+            
+            if showingEventSheet {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
                         showingEventSheet = false
-                    },
-                    trailing: Button("Add") {
+                        eventTitle = ""
+                        eventDescription = ""
+                    }
+                
+                EventFormView(
+                    isPresented: $showingEventSheet,
+                    eventTitle: $eventTitle,
+                    eventDescription: $eventDescription,
+                    onSave: {
                         if let location = selectedLocation {
                             viewModel.addEvent(
                                 title: eventTitle,
@@ -89,10 +92,12 @@ struct ContentView: View {
                             showingEventSheet = false
                         }
                     }
-                    .disabled(eventTitle.isEmpty)
                 )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding()
             }
         }
+        .animation(.spring(response: 0.3), value: showingEventSheet)
     }
     
     private func convertToCoordinate(_ point: CGPoint) -> CLLocationCoordinate2D {
