@@ -29,9 +29,22 @@
 		2B63D9C92D6135B70042BCE7 /* pinpointUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = pinpointUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2B4E26632D7409C70022B05F /* Exceptions for "pinpoint" folder in "pinpoint" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2B63D9AE2D6135B60042BCE7 /* pinpoint */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		2B63D9B12D6135B60042BCE7 /* pinpoint */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2B4E26632D7409C70022B05F /* Exceptions for "pinpoint" folder in "pinpoint" target */,
+			);
 			path = pinpoint;
 			sourceTree = "<group>";
 		};

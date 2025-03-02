@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>We need your location to show you nearby events and notify you when new events are created in your area.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>We need your location to show you nearby events and notify you when new events are created in your area, even when the app is in the background.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>We need your location to notify you about new events in your area, even when the app is in the background.</string>
+</dict>
+</plist> 
