@@ -17,50 +17,98 @@ struct ContentView: View {
     @State private var eventTitle = ""
     @State private var eventDescription = ""
     @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        // Start with a zoomed out view
+        center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+        span: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 180)
     )
+    @State private var temporaryPin: CLLocationCoordinate2D?
+    @State private var longPressLocation: CGPoint?
+    @State private var isLongPressing = false
+    @State private var hasInitialLocation = false
     
     var body: some View {
         ZStack {
             Map(coordinateRegion: $region,
                 showsUserLocation: true,
                 userTrackingMode: .constant(.follow),
-                annotationItems: viewModel.events) { event in
+                annotationItems: viewModel.events + (temporaryPin.map { [Event(title: "New Event", description: "", coordinate: $0)] } ?? [])) { event in
                 MapAnnotation(coordinate: event.coordinate) {
                     VStack {
                         Image(systemName: "mappin.circle.fill")
                             .font(.title)
-                            .foregroundColor(.red)
-                        Text(event.title)
-                            .font(.caption)
-                            .background(Color.white.opacity(0.8))
-                            .cornerRadius(4)
+                            .foregroundColor(event.id == nil ? .blue : .red)
+                        if event.id != nil {
+                            Text(event.title)
+                                .font(.caption)
+                                .background(Color.white.opacity(0.8))
+                                .cornerRadius(4)
+                        }
                     }
                 }
             }
-            .gesture(
-                LongPressGesture(minimumDuration: 0.5)
-                    .sequenced(before: DragGesture(minimumDistance: 0))
-                    .onEnded { value in
-                        switch value {
-                        case .second(true, let drag):
-                            if let location = drag?.location {
-                                let coordinate = convertToCoordinate(location)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if isLongPressing {
+                            // Cancel if dragged while long pressing
+                            isLongPressing = false
+                            temporaryPin = nil
+                            selectedLocation = nil
+                            showingEventSheet = false
+                        }
+                        longPressLocation = value.location
+                    }
+            )
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.7)
+                    .onEnded { _ in
+                        isLongPressing = true
+                        if let location = longPressLocation {
+                            let coordinate = convertToCoordinate(location)
+                            temporaryPin = coordinate
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            
+                            // Short delay before showing the form
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 selectedLocation = coordinate
                                 showingEventSheet = true
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                isLongPressing = false
                             }
-                        default:
-                            break
                         }
                     }
             )
             .blur(radius: showingEventSheet ? 10 : 0)
             
+            // Location error overlay
+            if let error = viewModel.locationError {
+                VStack {
+                    Text(error)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(10)
+                        .padding()
+                    
+                    if viewModel.locationStatus == .denied {
+                        Button("Open Settings") {
+                            if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(settingsUrl)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.blue)
+                        .cornerRadius(10)
+                        .padding(.top, -10)
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(2)
+            }
+            
             VStack {
                 Spacer()
-                Text("Long press to add an event")
+                Text("Hold for 1 second to add an event")
                     .padding()
                     .background(Color.white.opacity(0.8))
                     .cornerRadius(10)
@@ -76,6 +124,7 @@ struct ContentView: View {
                         showingEventSheet = false
                         eventTitle = ""
                         eventDescription = ""
+                        temporaryPin = nil
                     }
                 
                 EventFormView(
@@ -92,6 +141,7 @@ struct ContentView: View {
                             eventTitle = ""
                             eventDescription = ""
                             showingEventSheet = false
+                            temporaryPin = nil
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
                         }
                     }
@@ -101,22 +151,34 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.3), value: showingEventSheet)
-        .onChange(of: viewModel.userLatitude) { newLat in
+        .animation(.easeInOut, value: viewModel.locationError)
+        .onChange(of: viewModel.userLatitude) { _ in
             updateRegionIfNeeded()
         }
-        .onChange(of: viewModel.userLongitude) { newLon in
+        .onChange(of: viewModel.userLongitude) { _ in
             updateRegionIfNeeded()
         }
     }
     
     private func updateRegionIfNeeded() {
         if let lat = viewModel.userLatitude,
-           let lon = viewModel.userLongitude {
-            region = MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
+           let lon = viewModel.userLongitude,
+           !hasInitialLocation {
+            print("ContentView: Updating region to user location: \(lat), \(lon)")
+            hasInitialLocation = true
+            withAnimation {
+                centerMapOnLocation(latitude: lat, longitude: lon)
+            }
         }
+    }
+    
+    private func centerMapOnLocation(latitude: Double, longitude: Double) {
+        print("ContentView: Centering map on: \(latitude), \(longitude)")
+        let newRegion = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
+        region = newRegion
     }
     
     private func convertToCoordinate(_ point: CGPoint) -> CLLocationCoordinate2D {

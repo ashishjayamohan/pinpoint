@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>We need your location to show you nearby events and notify you when new events are created in your area.</string>
+    <string>We need your location to show nearby events and notify you when new events are created in your area.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>We need your location to show you nearby events and notify you when new events are created in your area, even when the app is in the background.</string>
+    <string>We need your location to show nearby events and notify you when new events are created in your area.</string>
     <key>NSLocationAlwaysUsageDescription</key>
     <string>We need your location to notify you about new events in your area, even when the app is in the background.</string>
 </dict>

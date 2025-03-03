@@ -7,6 +7,10 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var events: [Event] = []
     @Published var userLatitude: Double?
     @Published var userLongitude: Double?
+    @Published var isInitialLocationSet = false
+    @Published var locationError: String?
+    @Published var locationStatus: CLAuthorizationStatus = .notDetermined
+    
     private let locationManager = CLLocationManager()
     private let db = Firestore.firestore()
     private var listenerRegistration: ListenerRegistration?
@@ -20,20 +24,54 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     override init() {
         super.init()
-        setupLocationManager()
+        print("EventViewModel: Initializing...")
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.distanceFilter = kCLDistanceFilterNone
+        
+        // Initialize other services
         requestNotificationPermission()
         startListeningToEvents()
+        
+        // Trigger the authorization check through the delegate
+        print("EventViewModel: Initial authorization status: \(locationManager.authorizationStatus.rawValue)")
+        self.locationStatus = locationManager.authorizationStatus
+        
+        // This will trigger locationManagerDidChangeAuthorization
+        if locationManager.authorizationStatus == .notDetermined {
+            print("EventViewModel: Requesting location authorization...")
+            locationManager.requestWhenInUseAuthorization()
+        } else {
+            // Manually trigger the delegate method for existing authorization
+            DispatchQueue.main.async {
+                self.locationManagerDidChangeAuthorization(self.locationManager)
+            }
+        }
     }
     
     deinit {
         listenerRegistration?.remove()
     }
     
-    private func setupLocationManager() {
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.requestWhenInUseAuthorization()
-        locationManager.startUpdatingLocation()
+    private func checkLocationAuthorization() {
+        print("EventViewModel: Checking location authorization...")
+        switch locationManager.authorizationStatus {
+        case .notDetermined:
+            print("EventViewModel: Authorization not determined, requesting...")
+            locationManager.requestWhenInUseAuthorization()
+        case .restricted:
+            print("EventViewModel: Location access restricted")
+            locationError = "Location access is restricted"
+        case .denied:
+            print("EventViewModel: Location access denied")
+            locationError = "Location access is denied"
+        case .authorizedAlways, .authorizedWhenInUse:
+            print("EventViewModel: Location access authorized, starting updates...")
+            locationManager.startUpdatingLocation()
+        @unknown default:
+            break
+        }
+        locationStatus = locationManager.authorizationStatus
     }
     
     private func requestNotificationPermission() {
@@ -43,13 +81,6 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             } else if let error = error {
                 print("Error requesting notification permission: \(error.localizedDescription)")
             }
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        if let location = locations.last {
-            userLatitude = location.coordinate.latitude
-            userLongitude = location.coordinate.longitude
         }
     }
     
@@ -126,6 +157,87 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             try db.collection("events").addDocument(from: newEvent)
         } catch {
             print("Error adding event: \(error.localizedDescription)")
+        }
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        print("EventViewModel: Authorization status changed to: \(manager.authorizationStatus.rawValue)")
+        
+        DispatchQueue.main.async {
+            self.locationStatus = manager.authorizationStatus
+            
+            if !CLLocationManager.locationServicesEnabled() {
+                self.locationError = "Location services are disabled"
+                return
+            }
+            
+            switch manager.authorizationStatus {
+            case .authorizedWhenInUse, .authorizedAlways:
+                print("EventViewModel: Location access granted, starting updates...")
+                self.locationError = nil
+                manager.startUpdatingLocation()
+                
+            case .notDetermined:
+                print("EventViewModel: Location access not determined")
+                self.locationError = nil
+                
+            case .denied:
+                print("EventViewModel: Location access denied")
+                self.locationError = "Please enable location access in Settings to see nearby events"
+                
+            case .restricted:
+                print("EventViewModel: Location access restricted")
+                self.locationError = "Location access is restricted on this device"
+                
+            @unknown default:
+                break
+            }
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        print("EventViewModel: Received location update. Accuracy: \(location.horizontalAccuracy)")
+        
+        DispatchQueue.main.async {
+            // Accept any location update initially
+            if self.userLatitude == nil || self.userLongitude == nil {
+                print("EventViewModel: Setting initial location: \(location.coordinate)")
+                self.userLatitude = location.coordinate.latitude
+                self.userLongitude = location.coordinate.longitude
+                self.isInitialLocationSet = true
+                return
+            }
+            
+            // For subsequent updates, only update if reasonably accurate
+            if location.horizontalAccuracy <= 100 {
+                print("EventViewModel: Updating location: \(location.coordinate)")
+                self.userLatitude = location.coordinate.latitude
+                self.userLongitude = location.coordinate.longitude
+                
+                // Once we have a good location, we can reduce update frequency
+                manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+                manager.distanceFilter = 10 // Only update if moved 10 meters
+            }
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("EventViewModel: Location manager failed with error: \(error.localizedDescription)")
+        
+        DispatchQueue.main.async {
+            if let clError = error as? CLError {
+                switch clError.code {
+                case .denied:
+                    self.locationError = "Location access denied. Please enable in Settings."
+                case .locationUnknown:
+                    self.locationError = "Unable to determine location"
+                default:
+                    self.locationError = "Error getting location: \(clError.localizedDescription)"
+                }
+            } else {
+                self.locationError = "Unknown error getting location"
+            }
         }
     }
 } 
