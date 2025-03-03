@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MapKit
+import CoreHaptics
 
 
 struct ContentView: View {
@@ -48,6 +49,7 @@ struct ContentView: View {
                                 let coordinate = convertToCoordinate(location)
                                 selectedLocation = coordinate
                                 showingEventSheet = true
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             }
                         default:
                             break
@@ -90,6 +92,7 @@ struct ContentView: View {
                             eventTitle = ""
                             eventDescription = ""
                             showingEventSheet = false
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
                         }
                     }
                 )
@@ -98,6 +101,22 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.3), value: showingEventSheet)
+        .onChange(of: viewModel.userLatitude) { newLat in
+            updateRegionIfNeeded()
+        }
+        .onChange(of: viewModel.userLongitude) { newLon in
+            updateRegionIfNeeded()
+        }
+    }
+    
+    private func updateRegionIfNeeded() {
+        if let lat = viewModel.userLatitude,
+           let lon = viewModel.userLongitude {
+            region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            )
+        }
     }
     
     private func convertToCoordinate(_ point: CGPoint) -> CLLocationCoordinate2D {
