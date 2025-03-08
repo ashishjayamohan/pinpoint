@@ -10,10 +10,18 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isInitialLocationSet = false
     @Published var locationError: String?
     @Published var locationStatus: CLAuthorizationStatus = .notDetermined
+    @Published var canCreateEvent: Bool = true
+    @Published var timeUntilNextEvent: TimeInterval = 0
     
     private let locationManager = CLLocationManager()
     private let db = Firestore.firestore()
     private var listenerRegistration: ListenerRegistration?
+    private var eventCreationTimes: [Date] = []
+    private var eventCreationTimer: Timer?
+    
+    // Rate limit constants
+    private let maxEventsPerHour = 2
+    private let rateLimitWindow: TimeInterval = 3600 // 1 hour in seconds
     
     var userLocation: CLLocationCoordinate2D? {
         if let lat = userLatitude, let lon = userLongitude {
@@ -33,6 +41,9 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         requestNotificationPermission()
         startListeningToEvents()
         
+        // Start timer to update canCreateEvent status
+        startEventCreationTimer()
+        
         // Trigger the authorization check through the delegate
         print("EventViewModel: Initial authorization status: \(locationManager.authorizationStatus.rawValue)")
         self.locationStatus = locationManager.authorizationStatus
@@ -51,6 +62,7 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     deinit {
         listenerRegistration?.remove()
+        eventCreationTimer?.invalidate()
     }
     
     private func checkLocationAuthorization() {
@@ -146,7 +158,51 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         UNUserNotificationCenter.current().add(request)
     }
     
+    private func startEventCreationTimer() {
+        // Update every second to keep the UI current
+        eventCreationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.updateEventCreationStatus()
+        }
+    }
+    
+    private func updateEventCreationStatus() {
+        let now = Date()
+        // Remove timestamps older than the rate limit window
+        eventCreationTimes = eventCreationTimes.filter { now.timeIntervalSince($0) < rateLimitWindow }
+        
+        let canCreate = eventCreationTimes.count < maxEventsPerHour
+        
+        DispatchQueue.main.async {
+            self.canCreateEvent = canCreate
+            
+            if !canCreate, let oldestTime = self.eventCreationTimes.first {
+                // Calculate time until next available slot
+                let timeUntilNext = self.rateLimitWindow - now.timeIntervalSince(oldestTime)
+                self.timeUntilNextEvent = max(0, timeUntilNext)
+            } else {
+                self.timeUntilNextEvent = 0
+            }
+        }
+    }
+    
+    func canCreateNewEvent() -> (Bool, String?) {
+        updateEventCreationStatus()
+        
+        if !canCreateEvent {
+            let minutes = Int(ceil(timeUntilNextEvent / 60))
+            return (false, "You can create another event in \(minutes) minute\(minutes == 1 ? "" : "s")")
+        }
+        
+        return (true, nil)
+    }
+    
     func addEvent(title: String, description: String, coordinate: CLLocationCoordinate2D) {
+        let (canCreate, errorMessage) = canCreateNewEvent()
+        guard canCreate else {
+            print("EventViewModel: Rate limit reached - \(errorMessage ?? "")")
+            return
+        }
+        
         let newEvent = Event(
             title: title,
             description: description,
@@ -155,6 +211,8 @@ class EventViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         do {
             try db.collection("events").addDocument(from: newEvent)
+            eventCreationTimes.append(Date())
+            updateEventCreationStatus()
         } catch {
             print("Error adding event: \(error.localizedDescription)")
         }

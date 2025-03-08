@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var selectedLocation: CLLocationCoordinate2D?
     @State private var eventTitle = ""
     @State private var eventDescription = ""
+    @State private var showingRateLimitAlert = false
+    @State private var rateLimitMessage = ""
     @State private var region = MKCoordinateRegion(
         // Start with a zoomed out view
         center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
@@ -24,7 +26,6 @@ struct ContentView: View {
     @State private var temporaryPin: CLLocationCoordinate2D?
     @State private var longPressLocation: CGPoint?
     @State private var isLongPressing = false
-    @State private var hasInitialLocation = false
     
     var body: some View {
         ZStack {
@@ -62,6 +63,13 @@ struct ContentView: View {
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.7)
                     .onEnded { _ in
+                        let (canCreate, message) = viewModel.canCreateNewEvent()
+                        if !canCreate {
+                            rateLimitMessage = message ?? "You've reached the event creation limit"
+                            showingRateLimitAlert = true
+                            return
+                        }
+                        
                         isLongPressing = true
                         if let location = longPressLocation {
                             let coordinate = convertToCoordinate(location)
@@ -152,6 +160,11 @@ struct ContentView: View {
         }
         .animation(.spring(response: 0.3), value: showingEventSheet)
         .animation(.easeInOut, value: viewModel.locationError)
+        .alert("Event Creation Limit", isPresented: $showingRateLimitAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(rateLimitMessage)
+        }
         .onChange(of: viewModel.userLatitude) { _ in
             updateRegionIfNeeded()
         }
@@ -162,10 +175,10 @@ struct ContentView: View {
     
     private func updateRegionIfNeeded() {
         if let lat = viewModel.userLatitude,
-           let lon = viewModel.userLongitude,
-           !hasInitialLocation {
+        let lon = viewModel.userLongitude,
+        !viewModel.isInitialLocationSet {
             print("ContentView: Updating region to user location: \(lat), \(lon)")
-            hasInitialLocation = true
+            viewModel.isInitialLocationSet = true
             withAnimation {
                 centerMapOnLocation(latitude: lat, longitude: lon)
             }
