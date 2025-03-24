@@ -17,7 +17,7 @@ struct ContentView: View {
     @State private var eventTitle = ""
     @State private var eventDescription = ""
     @State private var showingRateLimitAlert = false
-    @State private var rateLimitMessage = ""
+    @State private var rateLimitMessage = "Rate Limited"
     @State private var region = MKCoordinateRegion(
         // Start with a zoomed out view
         center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
