@@ -1,2 +1,2 @@
 # pinpoint
-geolocation app for events. idk.
+geolocation app for events.
